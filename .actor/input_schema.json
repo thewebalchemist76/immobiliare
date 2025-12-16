@@ -1,0 +1,168 @@
+{
+  "title": "Immobiliare.it Scraper Input",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "max_items": {
+      "title": "Max pagine",
+      "type": "integer",
+      "description": "Numero massimo di pagine da scrapare",
+      "default": 10,
+      "minimum": 1,
+      "maximum": 100
+    },
+    "municipality": {
+      "title": "Città/Comune",
+      "type": "string",
+      "description": "Es: roma, milano, firenze",
+      "editor": "textfield",
+      "default": "roma"
+    },
+    "operation": {
+      "title": "Operazione",
+      "type": "string",
+      "description": "Vendita o Affitto",
+      "default": "vendita",
+      "enum": ["vendita", "affitto", "buy", "rent"],
+      "enumTitles": ["Vendita", "Affitto", "Buy", "Rent"]
+    },
+    "min_price": {
+      "title": "Prezzo minimo (€)",
+      "type": "integer",
+      "description": "Prezzo minimo",
+      "editor": "number"
+    },
+    "max_price": {
+      "title": "Prezzo massimo (€)",
+      "type": "integer",
+      "description": "Prezzo massimo",
+      "editor": "number"
+    },
+    "min_size": {
+      "title": "Superficie minima (m²)",
+      "type": "integer",
+      "description": "Superficie minima in metri quadri",
+      "editor": "number"
+    },
+    "max_size": {
+      "title": "Superficie massima (m²)",
+      "type": "integer",
+      "description": "Superficie massima in metri quadri",
+      "editor": "number"
+    },
+    "min_rooms": {
+      "title": "Locali minimi",
+      "type": "integer",
+      "description": "Numero minimo di locali",
+      "editor": "number",
+      "minimum": 0,
+      "maximum": 10
+    },
+    "max_rooms": {
+      "title": "Locali massimi",
+      "type": "integer",
+      "description": "Numero massimo di locali",
+      "editor": "number",
+      "minimum": 0,
+      "maximum": 10
+    },
+    "bathrooms": {
+      "title": "Bagni",
+      "type": "integer",
+      "description": "Numero di bagni",
+      "editor": "number",
+      "minimum": 1,
+      "maximum": 4
+    },
+    "property_condition": {
+      "title": "Stato immobile",
+      "type": "string",
+      "description": "Condizione dell'immobile",
+      "enum": ["", "1", "6", "2", "5"],
+      "enumTitles": ["Indifferente", "Nuovo", "Ottimo", "Buono", "Da ristrutturare"]
+    },
+    "floor": {
+      "title": "Piano",
+      "type": "string",
+      "description": "Tipo di piano",
+      "enum": ["", "10", "20", "30"],
+      "enumTitles": ["Indifferente", "Piano terra", "Piani intermedi", "Ultimo piano"]
+    },
+    "garage": {
+      "title": "Garage/Posto auto",
+      "type": "string",
+      "description": "Tipo di garage",
+      "enum": ["", "1", "3", "4"],
+      "enumTitles": ["Indifferente", "Garage singolo", "Garage doppio", "Posto auto"]
+    },
+    "heating": {
+      "title": "Riscaldamento",
+      "type": "string",
+      "description": "Tipo di riscaldamento",
+      "enum": ["", "1", "2"],
+      "enumTitles": ["Indifferente", "Autonomo", "Centralizzato"]
+    },
+    "garden": {
+      "title": "Giardino",
+      "type": "string",
+      "description": "Tipo di giardino",
+      "enum": ["", "10", "20"],
+      "enumTitles": ["Indifferente", "Privato", "Comune"]
+    },
+    "terrace": {
+      "title": "Terrazzo",
+      "type": "boolean",
+      "description": "Con terrazzo",
+      "default": false
+    },
+    "balcony": {
+      "title": "Balcone",
+      "type": "boolean",
+      "description": "Con balcone",
+      "default": false
+    },
+    "lift": {
+      "title": "Ascensore",
+      "type": "boolean",
+      "description": "Con ascensore",
+      "default": false
+    },
+    "furnished": {
+      "title": "Arredato",
+      "type": "boolean",
+      "description": "Arredato",
+      "default": false
+    },
+    "cellar": {
+      "title": "Cantina",
+      "type": "boolean",
+      "description": "Con cantina",
+      "default": false
+    },
+    "pool": {
+      "title": "Piscina",
+      "type": "boolean",
+      "description": "Con piscina",
+      "default": false
+    },
+    "exclude_auctions": {
+      "title": "Escludi aste",
+      "type": "boolean",
+      "description": "Escludi immobili all'asta",
+      "default": false
+    },
+    "virtual_tour": {
+      "title": "Virtual tour",
+      "type": "boolean",
+      "description": "Solo con virtual tour",
+      "default": false
+    },
+    "keywords": {
+      "title": "Parole chiave",
+      "type": "string",
+      "description": "Parole chiave da cercare",
+      "editor": "textfield"
+    }
+  },
+  "required": ["municipality"]
+}

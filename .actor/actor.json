@@ -1,0 +1,31 @@
+{
+  "actorSpecification": 1,
+  "name": "immobiliare-scraper",
+  "title": "Immobiliare.it Scraper",
+  "description": "Scraper completo per Immobiliare.it con tutti i filtri disponibili",
+  "version": "1.0",
+  "dockerfile": "./Dockerfile",
+  "input": "./.actor/input_schema.json",
+  "storages": {
+    "dataset": {
+      "actorSpecification": 1,
+      "title": "Listings",
+      "views": {
+        "overview": {
+          "title": "Overview",
+          "transformation": {
+            "fields": [
+              "title",
+              "price",
+              "location",
+              "rooms",
+              "bathrooms",
+              "surface_sqm",
+              "url"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
