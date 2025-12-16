@@ -181,11 +181,34 @@ class ImmobiliareScraper:
         pages_scraped = 0
         
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            # Get Apify proxy configuration with RESIDENTIAL proxies
+            proxy_config = await Actor.create_proxy_configuration(
+                groups=['RESIDENTIAL']
+            )
+            proxy_url = await proxy_config.new_url()
+            
+            Actor.log.info(f"🔒 Using Apify residential proxy")
+            
+            # Parse proxy URL to extract components
+            from urllib.parse import urlparse
+            parsed_proxy = urlparse(proxy_url)
+            
+            browser = await p.chromium.launch(
+                headless=True,
+                proxy={
+                    'server': f"{parsed_proxy.scheme}://{parsed_proxy.hostname}:{parsed_proxy.port}",
+                    'username': parsed_proxy.username,
+                    'password': parsed_proxy.password
+                }
+            )
+            
             context = await browser.new_context(
                 viewport={'width': 1920, 'height': 1080},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                locale='it-IT',
+                timezone_id='Europe/Rome'
             )
+            
             page = await context.new_page()
             
             try:
@@ -194,10 +217,16 @@ class ImmobiliareScraper:
                 Actor.log.info(f"Page loaded. Title: {await page.title()}")
                 
                 # Wait a bit for dynamic content
-                await asyncio.sleep(2)
+                await asyncio.sleep(3)
+                
+                # Check for CAPTCHA
+                page_content = await page.content()
+                if 'captcha' in page_content.lower():
+                    Actor.log.error("❌ CAPTCHA detected! The site is blocking automated access.")
+                    Actor.log.info("Try running again - residential proxies rotate automatically")
+                    return []
                 
                 # Debug: check page content
-                page_content = await page.content()
                 if 'Nessun risultato' in page_content or 'Non ci sono annunci' in page_content:
                     Actor.log.warning("⚠️ La ricerca non ha prodotto risultati sul sito Immobiliare.it")
                     Actor.log.warning(f"URL cercato: {url}")
