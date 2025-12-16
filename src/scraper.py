@@ -103,17 +103,37 @@ class ImmobiliareScraper:
     
     async def extract_listings(self, page: Page) -> List[Dict]:
         """Extract listings from current page"""
-        await page.wait_for_selector('.in-card', timeout=15000)
+        # Try multiple selectors
+        selectors = [
+            '.in-card',
+            '.nd-list__item.in-realEstateResults__item',
+            'article[class*="card"]',
+            '[data-id][class*="card"]'
+        ]
         
-        listings = await page.evaluate('''() => {
-            const cards = document.querySelectorAll('.in-card');
-            return Array.from(cards).map(card => {
-                // Extract basic info
-                const titleEl = card.querySelector('.in-card__title');
-                const priceEl = card.querySelector('.in-card__price');
-                const locationEl = card.querySelector('.in-card__location');
-                const featuresEl = card.querySelector('.in-card__features');
-                const linkEl = card.querySelector('a.in-card__title');
+        working_selector = None
+        for selector in selectors:
+            try:
+                await page.wait_for_selector(selector, timeout=3000)
+                working_selector = selector
+                Actor.log.info(f"Using selector: {selector}")
+                break
+            except:
+                continue
+        
+        if not working_selector:
+            Actor.log.error("No valid selector found for listings")
+            return []
+        
+        listings = await page.evaluate(f'''() => {{
+            const cards = document.querySelectorAll('{working_selector}');
+            return Array.from(cards).map(card => {{
+                // Try multiple selectors for each field
+                const titleEl = card.querySelector('.in-card__title, [class*="title"]');
+                const priceEl = card.querySelector('.in-card__price, [class*="price"]');
+                const locationEl = card.querySelector('.in-card__location, [class*="location"]');
+                const featuresEl = card.querySelector('.in-card__features, [class*="features"]');
+                const linkEl = card.querySelector('a.in-card__title, a[class*="title"], a');
                 const imageEl = card.querySelector('img');
                 
                 // Extract features text
@@ -124,7 +144,7 @@ class ImmobiliareScraper:
                 const bathsMatch = features.match(/(\\d+)\\s*bagn/i);
                 const sqmMatch = features.match(/(\\d+)\\s*m/i);
                 
-                return {
+                return {{
                     title: titleEl?.textContent?.trim() || '',
                     price: priceEl?.textContent?.trim() || '',
                     location: locationEl?.textContent?.trim() || '',
@@ -136,16 +156,19 @@ class ImmobiliareScraper:
                     image_url: imageEl?.src || '',
                     listing_id: card.getAttribute('data-id') || '',
                     scraped_at: new Date().toISOString()
-                };
-            });
-        }''')
+                }};
+            }});
+        }}''')
+        
+        # Filter out empty listings
+        listings = [l for l in listings if l.get('title') or l.get('url')]
         
         return listings
     
     async def has_next_page(self, page: Page) -> bool:
         """Check if there's a next page"""
         return await page.evaluate('''() => {
-            const nextBtn = document.querySelector('a.pagination__next:not(.disabled)');
+            const nextBtn = document.querySelector('a.pagination__next:not(.disabled), [class*="pagination"] a[rel="next"]');
             return nextBtn !== null;
         }''')
     
@@ -161,21 +184,63 @@ class ImmobiliareScraper:
             browser = await p.chromium.launch(headless=True)
             context = await browser.new_context(
                 viewport={'width': 1920, 'height': 1080},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             )
             page = await context.new_page()
             
             try:
-                await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+                # Go to URL and wait for network to be idle
+                await page.goto(url, wait_until='networkidle', timeout=30000)
+                Actor.log.info(f"Page loaded. Title: {await page.title()}")
+                
+                # Wait a bit for dynamic content
+                await asyncio.sleep(2)
+                
+                # Debug: check page content
+                page_content = await page.content()
+                if 'Nessun risultato' in page_content or 'Non ci sono annunci' in page_content:
+                    Actor.log.warning("⚠️ La ricerca non ha prodotto risultati sul sito Immobiliare.it")
+                    Actor.log.warning(f"URL cercato: {url}")
+                    return []
+                
+                # Debug: try to find any card-like elements
+                selectors_to_check = [
+                    '.in-card',
+                    '.nd-list__item',
+                    'article',
+                    '[data-id]',
+                    '[class*="card"]',
+                    '[class*="RealEstate"]'
+                ]
+                
+                found_elements = []
+                for selector in selectors_to_check:
+                    count = await page.locator(selector).count()
+                    if count > 0:
+                        found_elements.append(f"{selector}: {count} elements")
+                
+                if found_elements:
+                    Actor.log.info(f"✅ Found elements: {', '.join(found_elements)}")
+                else:
+                    Actor.log.error("❌ No card elements found on page")
+                    Actor.log.info(f"Page HTML length: {len(page_content)} characters")
+                    # Log first 3000 chars of HTML for debugging
+                    Actor.log.info(f"HTML preview:\n{page_content[:3000]}")
+                    return []
                 
                 while pages_scraped < max_pages:
                     Actor.log.info(f"Scraping page {pages_scraped + 1}...")
                     
                     # Extract listings from current page
                     listings = await self.extract_listings(page)
+                    
+                    if not listings:
+                        Actor.log.warning(f"No listings extracted from page {pages_scraped + 1}")
+                        break
+                    
                     all_listings.extend(listings)
                     
-                    Actor.log.info(f"Extracted {len(listings)} listings from page {pages_scraped + 1}")
+                    Actor.log.info(f"✅ Extracted {len(listings)} listings from page {pages_scraped + 1}")
                     
                     # Save to dataset incrementally
                     for listing in listings:
@@ -186,16 +251,22 @@ class ImmobiliareScraper:
                     # Check for next page
                     if pages_scraped < max_pages and await self.has_next_page(page):
                         # Click next page
-                        await page.click('a.pagination__next:not(.disabled)')
-                        await asyncio.sleep(2)  # Wait for page load
+                        try:
+                            await page.click('a.pagination__next:not(.disabled)', timeout=5000)
+                            await asyncio.sleep(3)  # Wait for page load
+                        except:
+                            Actor.log.warning("Could not click next page button")
+                            break
                     else:
                         break
                         
             except Exception as e:
-                Actor.log.error(f"Error during scraping: {str(e)}")
+                Actor.log.error(f"❌ Error during scraping: {str(e)}")
+                import traceback
+                Actor.log.error(f"Traceback: {traceback.format_exc()}")
                 
             finally:
                 await browser.close()
         
-        Actor.log.info(f"Scraping completed! Total listings: {len(all_listings)}")
+        Actor.log.info(f"🎉 Scraping completed! Total listings: {len(all_listings)}")
         return all_listings
