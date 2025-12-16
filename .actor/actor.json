@@ -5,7 +5,7 @@
   "description": "Scraper completo per Immobiliare.it con tutti i filtri disponibili",
   "version": "1.0",
   "dockerfile": "./Dockerfile",
-  "input": "./.actor/input_schema.json",
+  "input": "./input_schema.json",
   "storages": {
     "dataset": {
       "actorSpecification": 1,
