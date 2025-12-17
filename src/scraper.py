@@ -2,7 +2,6 @@
 
 from urllib.parse import urlencode, urlparse
 from playwright.async_api import async_playwright, Page
-from playwright_stealth import stealth_async
 from typing import Dict, List, Optional
 import asyncio
 from apify import Actor
@@ -188,7 +187,7 @@ class ImmobiliareScraper:
             )
             proxy_url = await proxy_config.new_url()
             
-            Actor.log.info(f"🔒 Using Apify residential proxy + stealth mode")
+            Actor.log.info(f"🔒 Using Apify residential proxy")
             
             # Parse proxy URL to extract components
             parsed_proxy = urlparse(proxy_url)
@@ -203,7 +202,11 @@ class ImmobiliareScraper:
                 args=[
                     '--disable-blink-features=AutomationControlled',
                     '--disable-dev-shm-usage',
-                    '--no-sandbox'
+                    '--disable-gpu',
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-web-security',
+                    '--disable-features=IsolateOrigins,site-per-process'
                 ]
             )
             
@@ -214,33 +217,55 @@ class ImmobiliareScraper:
                 timezone_id='Europe/Rome',
                 extra_http_headers={
                     'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
                     'Accept-Encoding': 'gzip, deflate, br',
                     'DNT': '1',
                     'Connection': 'keep-alive',
-                    'Upgrade-Insecure-Requests': '1'
+                    'Upgrade-Insecure-Requests': '1',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'none',
+                    'Sec-Fetch-User': '?1',
+                    'Cache-Control': 'max-age=0'
                 }
             )
             
-            page = await context.new_page()
+            # Add init script to mask automation
+            await context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+                
+                window.navigator.chrome = {
+                    runtime: {},
+                };
+                
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5],
+                });
+                
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['it-IT', 'it', 'en-US', 'en'],
+                });
+            """)
             
-            # Apply stealth mode
-            await stealth_async(page)
-            Actor.log.info("🥷 Stealth mode activated")
+            page = await context.new_page()
             
             try:
                 # Go to URL and wait for network to be idle
+                Actor.log.info(f"Loading page: {url}")
                 await page.goto(url, wait_until='networkidle', timeout=30000)
-                Actor.log.info(f"Page loaded. Title: {await page.title()}")
+                Actor.log.info(f"✅ Page loaded. Title: {await page.title()}")
                 
                 # Wait a bit for dynamic content
-                await asyncio.sleep(3)
+                await asyncio.sleep(4)
                 
                 # Check for CAPTCHA
                 page_content = await page.content()
-                if 'captcha' in page_content.lower():
-                    Actor.log.error("❌ CAPTCHA still detected! Try running again or wait a few minutes.")
-                    Actor.log.info("The site might be temporarily blocking all automated access")
+                if 'captcha' in page_content.lower() or 'challenge' in page_content.lower():
+                    Actor.log.error("❌ CAPTCHA detected! The site is blocking access.")
+                    Actor.log.warning("💡 Try running again - proxies rotate automatically")
+                    Actor.log.warning("💡 Or wait 5-10 minutes before retrying")
                     return []
                 
                 # Debug: check page content
@@ -270,18 +295,24 @@ class ImmobiliareScraper:
                 else:
                     Actor.log.error("❌ No card elements found on page")
                     Actor.log.info(f"Page HTML length: {len(page_content)} characters")
+                    # Save screenshot for debugging
+                    try:
+                        await page.screenshot(path='/tmp/debug.png')
+                        Actor.log.info("📸 Screenshot saved to /tmp/debug.png")
+                    except:
+                        pass
                     # Log first 3000 chars of HTML for debugging
                     Actor.log.info(f"HTML preview:\n{page_content[:3000]}")
                     return []
                 
                 while pages_scraped < max_pages:
-                    Actor.log.info(f"Scraping page {pages_scraped + 1}...")
+                    Actor.log.info(f"📄 Scraping page {pages_scraped + 1}...")
                     
                     # Extract listings from current page
                     listings = await self.extract_listings(page)
                     
                     if not listings:
-                        Actor.log.warning(f"No listings extracted from page {pages_scraped + 1}")
+                        Actor.log.warning(f"⚠️ No listings extracted from page {pages_scraped + 1}")
                         break
                     
                     all_listings.extend(listings)
@@ -298,12 +329,14 @@ class ImmobiliareScraper:
                     if pages_scraped < max_pages and await self.has_next_page(page):
                         # Click next page
                         try:
+                            Actor.log.info("⏭️ Going to next page...")
                             await page.click('a.pagination__next:not(.disabled)', timeout=5000)
-                            await asyncio.sleep(3)  # Wait for page load
-                        except:
-                            Actor.log.warning("Could not click next page button")
+                            await asyncio.sleep(4)  # Wait for page load
+                        except Exception as e:
+                            Actor.log.warning(f"Could not navigate to next page: {str(e)}")
                             break
                     else:
+                        Actor.log.info("📍 No more pages to scrape")
                         break
                         
             except Exception as e:
