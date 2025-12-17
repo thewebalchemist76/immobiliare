@@ -1,7 +1,8 @@
 """Immobiliare.it scraper with all filters"""
 
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from playwright.async_api import async_playwright, Page
+from playwright_stealth import stealth_async
 from typing import Dict, List, Optional
 import asyncio
 from apify import Actor
@@ -187,10 +188,9 @@ class ImmobiliareScraper:
             )
             proxy_url = await proxy_config.new_url()
             
-            Actor.log.info(f"🔒 Using Apify residential proxy")
+            Actor.log.info(f"🔒 Using Apify residential proxy + stealth mode")
             
             # Parse proxy URL to extract components
-            from urllib.parse import urlparse
             parsed_proxy = urlparse(proxy_url)
             
             browser = await p.chromium.launch(
@@ -199,17 +199,34 @@ class ImmobiliareScraper:
                     'server': f"{parsed_proxy.scheme}://{parsed_proxy.hostname}:{parsed_proxy.port}",
                     'username': parsed_proxy.username,
                     'password': parsed_proxy.password
-                }
+                },
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-dev-shm-usage',
+                    '--no-sandbox'
+                ]
             )
             
             context = await browser.new_context(
                 viewport={'width': 1920, 'height': 1080},
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 locale='it-IT',
-                timezone_id='Europe/Rome'
+                timezone_id='Europe/Rome',
+                extra_http_headers={
+                    'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'DNT': '1',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1'
+                }
             )
             
             page = await context.new_page()
+            
+            # Apply stealth mode
+            await stealth_async(page)
+            Actor.log.info("🥷 Stealth mode activated")
             
             try:
                 # Go to URL and wait for network to be idle
@@ -222,8 +239,8 @@ class ImmobiliareScraper:
                 # Check for CAPTCHA
                 page_content = await page.content()
                 if 'captcha' in page_content.lower():
-                    Actor.log.error("❌ CAPTCHA detected! The site is blocking automated access.")
-                    Actor.log.info("Try running again - residential proxies rotate automatically")
+                    Actor.log.error("❌ CAPTCHA still detected! Try running again or wait a few minutes.")
+                    Actor.log.info("The site might be temporarily blocking all automated access")
                     return []
                 
                 # Debug: check page content
